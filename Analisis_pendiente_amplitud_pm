@@ -1,0 +1,31 @@
+#Analis pendiente obtenida de curve_fit(lineal,campo_m,magnetizacion_ua_m_filtrada)
+#%%
+import numpy as np
+import matplotlib.pyplot as plt 
+import pandas as pd
+import os
+from astropy.io import ascii
+from astropy.table import Table, Column, MaskedColumn
+from uncertainties import ufloat,unumpy
+from glob import glob
+#%%
+pend_300=glob('300_15_to_5/**/pendientes.txt',recursive=True)
+pend_300.sort()
+# %%
+pend_270=glob('270_15_to_5/**/pendientes.txt',recursive=True)
+pend_270.sort()
+# %%
+pend_239=glob('239_15_to_5/**/pendientes.txt',recursive=True)
+pend_239.sort()
+# %%
+pend_212=glob('212_15_to_5/**/pendientes.txt',recursive=True)
+pend_212.sort() 
+# %%
+pend_135=glob('135_15_to_5/**/pendientes.txt',recursive=True)
+pend_135.sort()
+
+# %%
+pend_081=glob('081_15_to_5/**/pendientes.txt',recursive=True)
+pend_081.sort()
+
+# %%
