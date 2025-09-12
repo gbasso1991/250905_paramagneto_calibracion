@@ -55,7 +55,7 @@ from tkinter import filedialog
 from uncertainties import ufloat, unumpy
 from datetime import datetime,timedelta
 from numpy.core.numeric import indices
-from funciones_procesado import medida_cruda, medida_cruda_autom,ajusta_seno, sinusoide,resta_inter,filtrando_ruido,recorte,promediado_ciclos,fourier_señales_5,lector_templog_2,lector_templog,susceptibilidad_M_0
+from funciones_procesado import medida_cruda, medida_cruda_autom,ajusta_seno, sinusoide,resta_inter,filtrando_ruido,recorte,promediado_ciclos,fourier_señales_5,fourier_señales_6,lector_templog_2,lector_templog,susceptibilidad_M_0
 
 #%% Configuracion de Script
 todos=1
@@ -80,7 +80,7 @@ graficos={
         'Filtrado_calibracion': 0,
         'Filtrado_muestra': 0,
         'Recorte_a_periodos_enteros_c': 0,
-        'Recorte_a_periodos_enteros_m': 1,
+        'Recorte_a_periodos_enteros_m': 0,
         'Campo_y_Mag_norm_c': 0,
         'Ciclos_HM_calibracion': 0,
         'Campo_y_Mag_norm_m': 0,
@@ -131,7 +131,8 @@ Ciclos_eje_M_filt =[]
 Ciclos_tiempo=[]
 Ciclos_eje_H_ua=[]
 Ciclos_eje_M_ua=[]
-
+Ciclo_fondo_H=[]
+Ciclo_fondo_M=[]
 Frecuencia_ref_muestra_kHz = []
 Frecuencia_ref_fondo_kHz = []
 Frec_fund=[]
@@ -368,7 +369,7 @@ for k in range(len(fnames_m)):
 
     # Comparacion de señales y ajustes
     if graficos['Referencias_y_ajustes']==1:
-        fig , ax = plt.subplots(2,1, figsize=(8,6),sharex='all')
+        fig , ax = plt.subplots(2,1, figsize=(8,6),sharex='all',constrained_layout=True)
 
         df_m.plot('t','v_r',label='Referencia',ax=ax[0],title=f'Muestra: {fnames_m[k]}')
         df_m.plot('t','v_r_ajustada',label='Ajuste',ax =ax[0])
@@ -379,7 +380,7 @@ for k in range(len(fnames_m)):
         df_f.plot('t','residuos', label='Residuos',ax=ax[1])
 
         fig.suptitle('Comparacion señal de referencias y ajustes',fontsize=20)
-        plt.tight_layout()
+
 
     '''
     Cortafuegos: Si la diferencia entre frecuencias es muy grande => error
@@ -406,14 +407,16 @@ for k in range(len(fnames_m)):
     Ejecuto resta_inter() sobre fem de muestra
     '''
     if graficos['Resta_m-f']==1:
-        Resta_m , t_m_1 , v_r_m_1 , figura_m = resta_inter(t_m,v_m,v_r_m,fase_m,frec_m,offset_m,df_f['t'],df_f['v'],df_f['v_r'],fase_f,frec_f,'muestra')
+        Resta_m, t_m_1, v_r_m_1, v_fondo_interp, v_fondo_interp_r, figura_m = resta_inter(t_m, v_m, v_r_m, fase_m, frec_m, offset_m,df_f['t'], df_f['v'], df_f['v_r'], fase_f, frec_f, 'muestra')
     else:
-        Resta_m , t_m_1 , v_r_m_1 , figura_m = resta_inter(t_m,v_m,v_r_m,fase_m,frec_m,offset_m,df_f['t'],df_f['v'],df_f['v_r'],fase_f,frec_f,0)
+        Resta_m, t_m_1, v_r_m_1, v_fondo_interp, v_fondo_interp_r, figura_m = resta_inter(t_m, v_m, v_r_m, fase_m, frec_m, offset_m,df_f['t'], df_f['v'], df_f['v_r'], fase_f, frec_f, 0)
 
+    
     # Grafico las restas
     if graficos['Resta_mf_y_cf']==1:
         plt.figure(figsize=(10,5))
         plt.plot(t_m_1,Resta_m,'.-',lw=0.9,label='Muestra - fondo')
+        plt.plot(t_m_1,v_fondo_interp,'-',lw=0.9,c='grey',label='fondo')
         # plt.plot(t_c_1,Resta_c,'.-',lw=0.9,label='Calibracion - fondo')
         plt.grid()
         plt.legend(loc='best')
@@ -428,9 +431,9 @@ for k in range(len(fnames_m)):
     Ejecuto recorte() sobre fem de muestra
     '''
     if graficos['Recorte_a_periodos_enteros_m']==1:
-        t_m_3, v_r_m_3 , Resta_m_3, N_ciclos_m, figura_m_3 = recorte(t_m_1,v_r_m_1,Resta_m,frec_m,'muestra')
+        t_m_3, v_r_m_3 , Resta_m_3, v_fondo_interp_2, v_fondo_interp_r_2, N_ciclos_m, figura_m_3 = recorte(t_m_1,v_r_m_1,Resta_m,frec_m,v_fondo_interp,v_fondo_interp_r,'muestra')
     else:
-        t_m_3, v_r_m_3 , Resta_m_3, N_ciclos_m, figura_m_3 = recorte(t_m_1,v_r_m_1,Resta_m,frec_m,0)
+        t_m_3, v_r_m_3 , Resta_m_3, v_fondo_interp_2, v_fondo_interp_r_2, N_ciclos_m, figura_m_3 = recorte(t_m_1,v_r_m_1,Resta_m,frec_m,v_fondo_interp,v_fondo_interp_r,0)
 
     '''
     Ultimo ajuste sobre las señales de referencia
@@ -442,7 +445,7 @@ for k in range(len(fnames_m)):
     Promedio los N periodos en 1
     Ejecuto promediado_ciclos() sobre fem muestra y fem campo
     '''
-    t_f_m , fem_campo_m , R_m , dt_m = promediado_ciclos(t_m_3,v_r_m_3,Resta_m_3,frec_final_m,N_ciclos_m)
+    t_f_m , fem_campo_m , R_m ,v_fondo_interp_3,v_fondo_interp_3_r, dt_m = promediado_ciclos(t_m_3,v_r_m_3,Resta_m_3,frec_final_m,N_ciclos_m,v_fondo_interp_2,v_fondo_interp_r_2)
 
     '''
     Integro los ciclos: calcula sumas acumuladas y convierte a fem a campo y magnetizacion
@@ -454,7 +457,7 @@ for k in range(len(fnames_m)):
     campo_ua0_m = dt_m*cumulative_trapezoid(fem_campo_m,initial=0) #[campo_ua0_c]=V*s
     campo_ua_m = campo_ua0_m - np.mean(campo_ua0_m) #Resto offset
     campo_m  = (campo_ua_m/max(campo_ua_m))*C_norm_campo #[campo_c]=A/m
-
+    campo_fondo_Am = (v_fondo_interp_3_r/max(v_fondo_interp_3_r))*C_norm_campo #[campo_c]=A/m
     '''
     La integral de la fem de la muestra (c/ fondo restado),
     es proporcional a la M mas una constante'''
@@ -481,22 +484,27 @@ for k in range(len(fnames_m)):
         - Espectro (f,amp,phi) de muestra
         - Espectro (f,amp,phi) de referencia (fem de campo)
     '''
+    #% MOMENTO FOURIER
+    # if Analisis_de_Fourier == 1:
+    #     _, _, muestra_rec_impar,delta_phi_0,f_0,amp_0,fase_0, espectro_f_amp_fase_m,espectro_ref = fourier_señales_5(t_m_3,Resta_m_3,v_r_m_3,
+    #                                                                                                     delta_t=delta_t[k],polaridad=polaridad,
+    #                                                                                                     filtro=0.05,frec_limite=2*N_armonicos_impares*frec_final_m,
+    #                                                                                                     name=fnames_m[k])
     # MOMENTO FOURIER
     if Analisis_de_Fourier == 1:
-        _, _, muestra_rec_impar,delta_phi_0,f_0,amp_0,fase_0, espectro_f_amp_fase_m,espectro_ref = fourier_señales_5(t_m_3,Resta_m_3,v_r_m_3,
-                                                                                                        delta_t=delta_t[k],polaridad=polaridad,
-                                                                                                        filtro=0.05,frec_limite=2*N_armonicos_impares*frec_final_m,
-                                                                                                        name=fnames_m[k])
+        (_, _, muestra_rec_impar, fondo_rec_impar, fondo_r_rec_impar,
+        delta_phi_0, f_0, amp_0, fase_0, f_0_ref, amp_0_ref, fase_0_ref,
+        espectro_f_amp_fase_m, espectro_ref, espectro_fondo, espectro_fondo_r) = fourier_señales_6(
+            t_m_3, Resta_m_3, v_r_m_3, v_fondo_interp_2, v_fondo_interp_r_2,
+            delta_t=delta_t[k], 
+            polaridad=polaridad,
+            filtro=0.05, frec_limite=2*N_armonicos_impares*frec_final_m,
+            name=fnames_m[k])
 
-        # Guardo graficos fourier: señal/espectro y señal impar/espectro filtrado
-        # fig_fourier.savefig(fnames_m[k]+'_Espectro.png',dpi=200,facecolor='w')
-        # fig2_fourier.savefig(fnames_m[k]+'_Rec_impar.png',dpi=200,facecolor='w')
-
-        print(f'\nf0 campo: {espectro_ref[0]:.2f} Hz')
+        # Ahora puedes usar los valores escalares:
+        print(f'\nf0 campo: {f_0_ref:.2f} Hz')
         print(f'\nf0 muestra: {f_0:.2f} Hz')
         print(f'Delta t: {(t_m_3[-1]-t_m_3[0]):.2e}')
-        print(f'N de periodos enteros: {N_ciclos_m}')
-        print(f'Num de puntos de la seña: {len(Resta_m_3)}')
 
         #CALCULO SAR
         Hmax=max(campo_m)
@@ -530,27 +538,32 @@ for k in range(len(fnames_m)):
             Resta_m_3 ==> muestra_rec_impar
         Ejecuto promediado_ciclos() sobre muestra_rec_impar
         '''
-        t_f_m , fem_campo_m , fem_mag_m , dt_m = promediado_ciclos(t_m_3,v_r_m_3,muestra_rec_impar,frec_final_m,N_ciclos_m)
+        t_f_m , fem_campo_m , fem_mag_m ,v_fondo_interp_3, _,dt_m = promediado_ciclos(t_m_3,v_r_m_3,muestra_rec_impar,frec_final_m,N_ciclos_m,fondo_rec_impar, fondo_r_rec_impar)
 
         magnetizacion_ua0_m_filtrada = dt_m*cumulative_trapezoid(fem_mag_m,initial=0)
         magnetizacion_ua_m_filtrada = magnetizacion_ua0_m_filtrada-np.mean(magnetizacion_ua0_m_filtrada)
-
+        senal_fondo_ua0 = dt_m*cumulative_trapezoid(v_fondo_interp_3,initial=0)
+        senal_fondo_ua = senal_fondo_ua0 - np.mean(senal_fondo_ua0) 
     else:
         #Sin analisis de Fourier, solamente acomodo la polaridad de la señal de la muestra.
-        t_f_m , fem_campo_m , fem_mag_m , dt_m = promediado_ciclos(t_m_3,v_r_m_3,Resta_m_3*polaridad,frec_final_m,N_ciclos_m)
+        t_f_m , fem_campo_m , fem_mag_m , v_fondo_interp_3,dt_m = promediado_ciclos(t_m_3,v_r_m_3,Resta_m_3*polaridad,frec_final_m,N_ciclos_m,v_fondo_interp_2)
     
     # 4 Oct 24 pendiente
     def lineal(x,m,n):
         return m*x+n
-    if not k==len(fnames_m)-1:
+    if not k==len(fnames_m): # inclusive el ultimo archivo que es el control de descancelacion
         (m,n),_=curve_fit(lineal,campo_m,magnetizacion_ua_m_filtrada)
         pendientes.append(m)
-    
+    # 11 Sept 25 pendiente del fondo
+    #(m_fondo,n_fondo),_=curve_fit(lineal,campo_fondo_Am,senal_fondo_ua)
+
+    m_fondo =(max(senal_fondo_ua)-min(senal_fondo_ua)) /(max(campo_fondo_Am)-min(campo_fondo_Am))
     '''
     Asigno unidades a la magnetizacion utilizando la calibracion que esta al principio del script
     '''
     magnetizacion_m = C_Vs_to_Am_magnetizacion*magnetizacion_ua_m #[magnetizacion_m]=A/m
     magnetizacion_m_filtrada = C_Vs_to_Am_magnetizacion*magnetizacion_ua_m_filtrada #[magnetizacion_m_filtrada]=A/m
+    senal_fondo_Am = C_Vs_to_Am_magnetizacion*senal_fondo_ua #[senal_fondo_Am]=A/m
     '''
     Ploteo H(t) y M(t) normalizados
     '''
@@ -658,7 +671,8 @@ for k in range(len(fnames_m)):
     Coercitividad_kAm.append(Hc_mean/1000)          #Campo coercitivo en kA/m
     Remanencia_Am.append(Mr_mean)                   #Magnetizacion remanente en kA/m
     xi_M_0.append(susc_a_M_0)                       #Sin unidades
-
+    Ciclo_fondo_H.append(campo_fondo_Am)          #Ciclo de fondo en A/m
+    Ciclo_fondo_M.append(senal_fondo_Am)          #Ciclo de fondo en A/m
     # #% EXPORTO CICLOS HM
     # '''
     # Exporto ciclos de histeresis en ASCII, primero en V.s, despues en A/m :
@@ -684,10 +698,11 @@ for k in range(len(fnames_m)):
 
     # output_file = os.path.join(output_dir, fnames_m[k][:-4] + '_ciclo_H_M.txt')
     # ascii.write(ciclo_out,output_file,names=encabezado,overwrite=True,delimiter='\t',formats=formato)
+#%%
 header_amplitudes = ufloat(np.mean(amplitudes), np.std(amplitudes))
-np.savetxt(os.path.join(output_dir,'pendientes.txt'),np.array(pendientes),fmt='%e' )
+np.savetxt(os.path.join(output_dir,'pendientes.txt'),np.array(pendientes),fmt='%e',header=f'Pendientes de los ciclos de histéresis (m*V*s/A)\nPendiente de fondo = {m_fondo:.2e} (m*V*s/A)\n')
 np.savetxt(os.path.join(output_dir,'amplitudes.txt'),np.array(amplitudes),fmt='%e', header=f'Amplitud promedio = {header_amplitudes:.2uS} mV\n')
-#plt.close('all')
+plt.close('all')
 #%% DETECTOR CICLOS DESCARTABLES
 fnames_m=np.array(fnames_m)
 
@@ -724,7 +739,6 @@ else:
     
 
 #%% PLOTEO TODOS LOS CICLOS RAW
-
 cmap = mpl.colormaps['viridis']
 norm = plt.Normalize(temp_m.min(), temp_m.max())# Crear un rango de colores basado en las temperaturas y el cmap
 if graficos['Ciclos_HM_m_todos']==1:
@@ -744,7 +758,8 @@ if graficos['Ciclos_HM_m_todos']==1:
         
     
     plt.plot(Ciclos_eje_H[-1]/1000,Ciclos_eje_M[-1],'-',color='k') #Descancelacion
-
+    plt.plot(Ciclo_fondo_H[0]/1000,Ciclo_fondo_M[0],'--',color='grey') #Fondo
+    #plt.plot(Ciclos_eje_H[0]/1000,Ciclo_fondo[0],'--',color='grey') #Descancelacion
 plt.legend(title='Ciclos descartados',ncol=2,loc='best',fancybox=True)
 
 # # Configurar la barra de colores
@@ -843,7 +858,8 @@ else:
 #%% PLOTEO TODOS LOS CICLOS FILTRADOS IMPAR
 cmap = mpl.colormaps['turbo']
 norm = plt.Normalize(temp_m.min(), temp_m.max())# Crear un rango de colores basado en las temperaturas y el cmap
-
+xaux=np.linspace(-24e3,24e3,1000)
+yaux=m_fondo*xaux*C_Vs_to_Am_magnetizacion
 if Analisis_de_Fourier==1:
     fig = plt.figure(figsize=(9,7),constrained_layout=True)
     ax = fig.add_subplot(1,1,1)
@@ -855,7 +871,8 @@ if Analisis_de_Fourier==1:
     plt.plot(Ciclo_descancelacion_H/1000,Ciclo_descancelacion_M_filt,'-',color='k',label='Descancelación')
     plt.plot(Ciclos_eje_H[0]/1000,Ciclos_eje_M_filt[0],'--',lw=2.2,color='tab:blue',label=f'{fnames_m[0].split("_")[-1][-7:-4]}  {temp_m[0]} °C')
     plt.plot(Ciclos_eje_H[-1]/1000,Ciclos_eje_M_filt[-1],'--',lw=2.2,color='tab:orange',label=f'{fnames_m[-1].split("_")[-1][-7:-4]}  {temp_m[-1]} °C')
-    
+    plt.plot(Ciclo_fondo_H[0]/1000,Ciclo_fondo_M[0],'--',color='grey',label='Fondo') #Fondo
+    plt.plot(xaux/1000,yaux,'--',color='k') #pendiente del fondo
     if Ciclo_promedio:
         plt.plot(H_prom/1000,M_prom,'-.',c='tab:red',label=f'Ciclo promedio ({Num_ciclos_m} ciclos)')
 plt.legend(loc='lower right',fancybox=True)
