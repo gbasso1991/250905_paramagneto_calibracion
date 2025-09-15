@@ -133,6 +133,8 @@ Ciclos_eje_H_ua=[]
 Ciclos_eje_M_ua=[]
 Ciclo_fondo_H=[]
 Ciclo_fondo_M=[]
+Ciclo_fondo_M_ua=[]
+Ciclo_fondo_H_ua=[]
 Frecuencia_ref_muestra_kHz = []
 Frecuencia_ref_fondo_kHz = []
 Frec_fund=[]
@@ -162,6 +164,7 @@ amplitudes=[]
 #%% Seleccion de carpeta con archivos via interfaz de usuario
 root = tk.Tk()
 root.withdraw()
+root.attributes('-topmost', True)
 if todos==1: #Leo todos los archivos del directorio
     texto_encabezado = "Seleccionar la carpeta con las medidas a analizar:"
     directorio = filedialog.askdirectory(title=texto_encabezado)
@@ -659,7 +662,7 @@ for k in range(len(fnames_m)):
     # cociente_f1_f0.append(espectro_f_amp_fase_m[1][1]/espectro_f_amp_fase_m[1][0])
     # cociente_f2_f0.append(espectro_f_amp_fase_m[1][2]/espectro_f_amp_fase_m[1][0])
 
-    #Reconstruccion impar, integracion
+    # Salvo en listas para exportar tabla de resultados mas adelante    
     Ciclos_tiempo.append(t_f_m[:] - t_f_m[0])
     Ciclos_eje_H_ua.append(campo_ua_m)
     Ciclos_eje_M_ua.append(magnetizacion_ua_m)
@@ -673,7 +676,10 @@ for k in range(len(fnames_m)):
     xi_M_0.append(susc_a_M_0)                       #Sin unidades
     Ciclo_fondo_H.append(campo_fondo_Am)          #Ciclo de fondo en A/m
     Ciclo_fondo_M.append(senal_fondo_Am)          #Ciclo de fondo en A/m
-    # #% EXPORTO CICLOS HM
+    Ciclo_fondo_M_ua.append(senal_fondo_ua)          #Ciclo de fondo en A/m
+    Ciclo_fondo_H_ua.append(v_fondo_interp_3_r)          
+    #Ciclo de fondo en A/m
+    #%% EXPORTO CICLOS HM
     # '''
     # Exporto ciclos de histeresis en ASCII, primero en V.s, despues en A/m :
     # | Tiempo (s) | Campo (V.s) | Magnetizacion (V.s) | Campo (A/m) |  Magnetizacion (A/m)
@@ -698,10 +704,10 @@ for k in range(len(fnames_m)):
 
     # output_file = os.path.join(output_dir, fnames_m[k][:-4] + '_ciclo_H_M.txt')
     # ascii.write(ciclo_out,output_file,names=encabezado,overwrite=True,delimiter='\t',formats=formato)
-#%%
-header_amplitudes = ufloat(np.mean(amplitudes), np.std(amplitudes))
-np.savetxt(os.path.join(output_dir,'pendientes.txt'),np.array(pendientes),fmt='%e',header=f'Pendientes de los ciclos de histéresis (m*V*s/A)\nPendiente de fondo = {m_fondo:.2e} (m*V*s/A)\n')
-np.savetxt(os.path.join(output_dir,'amplitudes.txt'),np.array(amplitudes),fmt='%e', header=f'Amplitud promedio = {header_amplitudes:.2uS} mV\n')
+#%% Salvo txt de pendientes y amplitudes de senal 
+header_amplitudes = ufloat(np.mean(amplitudes[:-1]), np.std(amplitudes[:-1]))
+np.savetxt(os.path.join(output_dir,'pendientes.txt'),np.array(pendientes),fmt='%e',header=f'Pendientes de los ciclos de histéresis (m*V*s/A)\nPendiente de fondo = {m_fondo:.2e} (m*V*s/A)\nUltima pendiente corresponde a la descancelacion\n')
+np.savetxt(os.path.join(output_dir,'amplitudes.txt'),np.array(amplitudes),fmt='%e', header=f'Amplitud promedio = {header_amplitudes:.2uS} mV\nUltima amplitud corresponde a la descancelacion y no se tiene en cuenta para el promedio\n')
 plt.close('all')
 #%% DETECTOR CICLOS DESCARTABLES
 fnames_m=np.array(fnames_m)
@@ -738,38 +744,38 @@ else:
     print('\nNo se descartó automaticamente ningun ciclo')
     
 
-#%% PLOTEO TODOS LOS CICLOS RAW
+#%% PLOTEO TODOS LOS CICLOS RAW: campo en A/m magnetizacion en Vs
 cmap = mpl.colormaps['viridis']
-norm = plt.Normalize(temp_m.min(), temp_m.max())# Crear un rango de colores basado en las temperaturas y el cmap
+norm = plt.Normalize(0, len(fnames_m))# Crear un rango de colores basado en las temperaturas y el cmap
+xaux=np.linspace(-Hmax,Hmax,1000)
+yaux=m_fondo*xaux
+
 if graficos['Ciclos_HM_m_todos']==1:
     fig = plt.figure(figsize=(9,7),constrained_layout=True)
     ax = fig.add_subplot(1,1,1)
     if detector_ciclos_descartables:
         for i in indx_discard: #Ciclos in
-            plt.plot(Ciclos_eje_H[i]/1000,Ciclos_eje_M[i],'.',label=f'{fnames_m[i].split("_")[-1].split(".")[0]:<4s}',alpha=0.5)
+            plt.plot(Ciclos_eje_H[i]/1000,Ciclos_eje_M_ua[i],'.',label=f'{fnames_m[i].split("_")[-1].split(".")[0]:<4s}',alpha=0.5)
 
         for i in indices_to_stay[:-1]: #Ciclos aceptados
-            color = cmap(norm(temp_m[i]))
-            plt.plot(Ciclos_eje_H[i]/1000,Ciclos_eje_M[i],color=color)
+            
+            plt.plot(Ciclos_eje_H[i]/1000,Ciclos_eje_M_ua[i])
     else:
         for i in range(len(fnames_m[:-1])): #Ciclos aceptados
-            color = cmap(norm(temp_m[i]))
-            plt.plot(Ciclos_eje_H[i]/1000,Ciclos_eje_M[i],color=color)
-        
+            color = cmap(norm(i))
+            plt.plot(Ciclos_eje_H[i]/1000,Ciclos_eje_M_ua[i],color=color)
     
-    plt.plot(Ciclos_eje_H[-1]/1000,Ciclos_eje_M[-1],'-',color='k') #Descancelacion
-    plt.plot(Ciclo_fondo_H[0]/1000,Ciclo_fondo_M[0],'--',color='grey') #Fondo
+    plt.plot(xaux/1000,yaux,'--',color='grey',label='AL de fondo') #pendiente del fondo
+    
+    plt.plot(Ciclos_eje_H[-1]/1000,Ciclos_eje_M_ua[-1],'-',color='k',label='Descancelacion') #Descancelacion
+    # plt.plot(Ciclo_fondo_H[0]/1000,Ciclo_fondo_M_ua[0],'--',color='grey') #Fondo
     #plt.plot(Ciclos_eje_H[0]/1000,Ciclo_fondo[0],'--',color='grey') #Descancelacion
 plt.legend(title='Ciclos descartados',ncol=2,loc='best',fancybox=True)
 
-# # Configurar la barra de colores
-sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-sm.set_array([])  # Esto es necesario para que la barra de colores muestre los valores correctos
-plt.colorbar(sm, label='Temperatura',ax=ax)  # Agrega una etiqueta adecuada
 #lt.text(0.15,0.75,,fontsize=20,bbox=dict(color='tab:orange',alpha=0.7),transform=ax.transAxes)
 plt.grid()
 plt.xlabel('H (kA/m)',fontsize=15)
-plt.ylabel('M (A/m)',fontsize=15)
+plt.ylabel('M (Vs)',fontsize=15)
 plt.suptitle('Ciclos de histéresis (sin filtrar)',fontsize=20)
 plt.title(f'{frec_nombre[0]/1000:>3.0f} kHz - {round(np.mean(Campo_maximo)/1e3):>4.1f} kA/m',loc='center',fontsize=15)
 plt.savefig(os.path.join(output_dir,os.path.commonprefix(list(fnames_m))+'_ciclos_MH_raw.png'),dpi=300,facecolor='w')
@@ -858,7 +864,7 @@ else:
 #%% PLOTEO TODOS LOS CICLOS FILTRADOS IMPAR
 cmap = mpl.colormaps['turbo']
 norm = plt.Normalize(temp_m.min(), temp_m.max())# Crear un rango de colores basado en las temperaturas y el cmap
-xaux=np.linspace(-24e3,24e3,1000)
+xaux=np.linspace(-Hmax,Hmax,1000)
 yaux=m_fondo*xaux*C_Vs_to_Am_magnetizacion
 if Analisis_de_Fourier==1:
     fig = plt.figure(figsize=(9,7),constrained_layout=True)
@@ -868,11 +874,11 @@ if Analisis_de_Fourier==1:
             plt.plot(Ciclos_eje_H[i]/1000,Ciclos_eje_M_filt[i],'-',color=color)
 
 
-    plt.plot(Ciclo_descancelacion_H/1000,Ciclo_descancelacion_M_filt,'-',color='k',label='Descancelación')
     plt.plot(Ciclos_eje_H[0]/1000,Ciclos_eje_M_filt[0],'--',lw=2.2,color='tab:blue',label=f'{fnames_m[0].split("_")[-1][-7:-4]}  {temp_m[0]} °C')
     plt.plot(Ciclos_eje_H[-1]/1000,Ciclos_eje_M_filt[-1],'--',lw=2.2,color='tab:orange',label=f'{fnames_m[-1].split("_")[-1][-7:-4]}  {temp_m[-1]} °C')
-    plt.plot(Ciclo_fondo_H[0]/1000,Ciclo_fondo_M[0],'--',color='grey',label='Fondo') #Fondo
-    plt.plot(xaux/1000,yaux,'--',color='k') #pendiente del fondo
+    #plt.plot(Ciclo_fondo_H[0]/1000,Ciclo_fondo_M[0],'--',color='grey',label='Fondo') #Fondo
+    plt.plot(Ciclo_descancelacion_H/1000,Ciclo_descancelacion_M_filt,'-',color='k',label='Descancelación')
+    plt.plot(xaux/1000,yaux,'--',color='grey',label='AL de fondo') #pendiente del fondo
     if Ciclo_promedio:
         plt.plot(H_prom/1000,M_prom,'-.',c='tab:red',label=f'Ciclo promedio ({Num_ciclos_m} ciclos)')
 plt.legend(loc='lower right',fancybox=True)
