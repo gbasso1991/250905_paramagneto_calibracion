@@ -1,0 +1,19 @@
+RESUMEN DE ANÁLISIS DE CORRELACIONES
+==================================================
+
+CORRELACIONES PENDIENTES:
+Pendiente vs Frecuencia: r = 0.553, p = 1.437e-06
+Pendiente vs H0: r = 0.037, p = 7.665e-01
+
+CORRELACIONES AMPLITUDES:
+Amplitud vs Frecuencia: r = 0.765, p = 7.262e-14
+Amplitud vs H0: r = 0.590, p = 1.871e-07
+
+CORRELACIÓN CRUZADA:
+Pendiente vs Amplitud: r = 0.498, p = 2.067e-05
+
+GRADIENTES PROMEDIO:
+Pendientes - H0: 2.530e-01 ± 4.834e-01
+Pendientes - Frecuencia: 3.863e-01 ± 5.694e-01
+Amplitudes - H0: 4.724e-01 ± 3.355e-01
+Amplitudes - Frecuencia: 1.009e+00 ± 5.021e-01

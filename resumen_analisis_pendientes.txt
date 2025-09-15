@@ -1,0 +1,19 @@
+RESUMEN DE ANÁLISIS ESTADÍSTICO - PENDIENTES
+============================================================
+
+CORRELACIONES:
+Pendiente vs Frecuencia (Pearson): r = 0.306, p = 2.298e-02
+Pendiente vs Frecuencia (Spearman): ρ = 0.337, p = 1.190e-02
+Pendiente vs H0 (Pearson): r = -0.030, p = 8.264e-01
+Pendiente vs H0 (Spearman): ρ = 0.058, p = 6.743e-01
+
+REGRESIÓN MÚLTIPLE:
+R² = 0.095
+R² ajustado = 0.060
+Intercepto = 8.218e+00
+Coef. Frecuencia = 2.987e-03
+Coef. H0 = -1.424e-03
+
+GRADIENTES ESPACIALES:
+Gradiente H0: 8.390e-02 ± 5.199e-01
+Gradiente Frecuencia: 5.232e-02 ± 5.735e-01

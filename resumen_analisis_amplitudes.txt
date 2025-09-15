@@ -1,0 +1,24 @@
+RESUMEN DE ANÁLISIS ESTADÍSTICO - AMPLITUDES
+============================================================
+
+ESTADÍSTICAS DESCRIPTIVAS:
+Media: 5.038 mV
+Desviación estándar: 2.123 mV
+Rango: 8.643 mV
+
+CORRELACIONES:
+Amplitud vs Frecuencia (Pearson): r = 0.638, p = 1.584e-07
+Amplitud vs Frecuencia (Spearman): ρ = 0.624, p = 3.498e-07
+Amplitud vs H0 (Pearson): r = 0.731, p = 2.300e-10
+Amplitud vs H0 (Spearman): ρ = 0.721, p = 5.470e-10
+
+REGRESIÓN MÚLTIPLE:
+R² = 0.942
+R² ajustado = 0.940
+Intercepto = -5.517
+Coef. Frecuencia = 0.024
+Coef. H0 = 0.131
+
+GRADIENTES ESPACIALES:
+Gradiente H0: 0.532 ± 0.337 mV/(kA/m)
+Gradiente Frecuencia: 1.014 ± 0.623 mV/kHz
