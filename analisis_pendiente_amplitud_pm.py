@@ -40,7 +40,7 @@ m_239 = [leer_file_pendientes(fpath) for fpath in pend_239]
 m_212 = [leer_file_pendientes(fpath) for fpath in pend_212]
 m_135 = [leer_file_pendientes(fpath) for fpath in pend_135]
 #m_081 = [leer_file_pendientes(fpath) for fpath in pend_081]
-#%%
+
 # Extraer solo los valores nominales (mean) para el heatmap
 m_300_nominal = [val.n for val in m_300]
 m_270_nominal = [val.n for val in m_270]
@@ -49,15 +49,24 @@ m_212_nominal = [val.n for val in m_212]
 m_135_nominal = [val.n for val in m_135]
 #m_081_nominal = [val.n for val in m_081]
 
+# Extraer solo las incertidumbres (std) 
+m_300_err= [val.s for val in m_300]
+m_270_err= [val.s for val in m_270]
+m_239_err= [val.s for val in m_239]
+m_212_err= [val.s for val in m_212]
+m_135_err= [val.s for val in m_135]
+#m_081_err= [val.s for val in m_081]
+
 #%%
 m = [ m_135, m_212, m_239, m_270, m_300]
 # Crear matriz para el heatmap (usando valores nominales)
 m_nominal = np.array([ m_135_nominal, m_212_nominal, 
                      m_239_nominal, m_270_nominal, m_300_nominal])
+m_err = [m_135_err, m_212_err, m_239_err, m_270_err, m_300_err]
 
 frecuencias = [135, 212, 239, 270, 300]  # kHz
 H0 = [20, 24, 27, 31, 35, 38, 42, 46, 50, 53, 57]  # amplitud de campo
-#%%
+
 # Crear figura y ejes
 plt.figure(figsize=(12, 6),constrained_layout=True)
 
@@ -84,11 +93,7 @@ plt.xticks(rotation=45)
 plt.yticks(rotation=0)
 plt.savefig('heatmap_pendiente_m_vs_frecuencia_amplitud_H0.png', dpi=300)
 plt.show()
-
-
-
-
-# #%% Veo de corregir pendientes por inclinación del fondo
+#%% Veo de corregir pendientes por inclinación del fondo
 # def corregir_por_inclinacion(pendientes, devolver_pendientes_corregidas=True, 
 #                              threshold_linear=1e-6, use_longdouble=True):
 #     """
@@ -196,7 +201,6 @@ plt.show()
 #     plt.grid(True)
 #     plt.tight_layout()
 #     plt.show()
-#%%
 
 #%% Amplitudes de señal
 amp_300=glob('300_15_to_5/**/amplitudes.txt',recursive=True)
@@ -265,9 +269,8 @@ plt.yticks(rotation=0)
 plt.savefig('heatmap_amplitud_señal_vs_frecuencia_amplitud_H0.png', dpi=300)
 plt.show()
 
-#%%ANÁLISIS ESTADÍSTICO DE CORRELACIONES - SOLO PENDIENTES
 # =============================================================================
-# ANÁLISIS ESTADÍSTICO DE CORRELACIONES - SOLO PENDIENTES
+#%%ANÁLISIS ESTADÍSTICO DE CORRELACIONES - SOLO PENDIENTES
 # =============================================================================
 print("="*60)
 print("ANÁLISIS ESTADÍSTICO DE CORRELACIONES - PENDIENTES")
@@ -279,19 +282,31 @@ import statsmodels.api as sm
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from uncertainties import ufloat, unumpy
+import uncertainties.umath as umath
 
-#% 1. PREPARACIÓN DE DATOS PARA PENDIENTES
-print("\n1. PREPARACIÓN DE DATOS")
+#%% 1. CARGA DE DATOS PARA PENDIENTES CON INCERTEZAS
+print("\n1. CARGA DE DATOS PENDIENTES CON INCERTEZAS")
 print("-"*40)
 
-# Crear DataFrame para análisis de correlación de pendientes
+# Crear arrays con valores nominales e incertezas
+pendientes_ufloat = []
+for i, freq in enumerate(frecuencias):
+    for j, h0_val in enumerate(H0):
+        # Crear objetos ufloat para cada medida
+        pendiente_u = ufloat(m_nominal[i, j], m_err[i][j])
+        pendientes_ufloat.append(pendiente_u)
+
+# Crear DataFrame
 corr_data_m = []
 for i, freq in enumerate(frecuencias):
     for j, h0_val in enumerate(H0):
         corr_data_m.append({
             'Frecuencia_kHz': freq,
             'H0_kA_m': h0_val,
-            'Pendiente': m_nominal[i, j]
+            'Pendiente': m_nominal[i, j],
+            'Pendiente_err': m_err[i][j],
+            'Pendiente_ufloat': ufloat(m_nominal[i, j], m_err[i][j])
         })
 
 df_pendientes = pd.DataFrame(corr_data_m)
@@ -300,25 +315,70 @@ print(f"Dataset creado con {len(df_pendientes)} observaciones")
 print("Primeras 5 filas:")
 print(df_pendientes.head())
 
-#% 2. ANÁLISIS DESCRIPTIVO BÁSICO
-print("\n\n2. ESTADÍSTICAS DESCRIPTIVAS")
+#%% 2. ANÁLISIS DESCRIPTIVO CON INCERTEZAS
+print("\n\n2. ESTADÍSTICAS DESCRIPTIVAS CON INCERTEZAS")
 print("-"*40)
 
-print("Estadísticas generales de pendientes:")
-print(f"Media: {df_pendientes['Pendiente'].mean():.3e}")
-print(f"Desviación estándar: {df_pendientes['Pendiente'].std():.3e}")
-print(f"Mínimo: {df_pendientes['Pendiente'].min():.3e}")
-print(f"Máximo: {df_pendientes['Pendiente'].max():.3e}")
+# Función para calcular estadísticas con incertezas
+def weighted_stats(values, errors):
+    """Calcula estadísticas ponderadas por incertezas"""
+    values = np.array(values)
+    errors = np.array(errors)
+    
+    # Ponderación por inverso de la varianza
+    weights = 1.0 / (errors**2)
+    total_weight = np.sum(weights)
+    
+    # Media ponderada
+    weighted_mean = np.sum(weights * values) / total_weight
+    
+    # Error de la media ponderada
+    weighted_mean_err = 1.0 / np.sqrt(total_weight)
+    
+    # Varianza ponderada
+    weighted_variance = np.sum(weights * (values - weighted_mean)**2) / total_weight
+    weighted_std = np.sqrt(weighted_variance)
+    
+    return weighted_mean, weighted_mean_err, weighted_std
 
-print("\nEstadísticas por frecuencia:")
-stats_freq = df_pendientes.groupby('Frecuencia_kHz')['Pendiente'].agg(['mean', 'std', 'count'])
-print(stats_freq)
+# Estadísticas generales considerando incertezas
+print("ESTADÍSTICAS GENERALES CON INCERTEZAS:")
+print("="*40)
 
-print("\nEstadísticas por campo H0:")
-stats_h0 = df_pendientes.groupby('H0_kA_m')['Pendiente'].agg(['mean', 'std', 'count'])
-print(stats_h0)
+weighted_mean, weighted_mean_err, weighted_std = weighted_stats(df_pendientes['Pendiente'], 
+                                                                df_pendientes['Pendiente_err'])
 
-#% 3. MATRIZ DE CORRELACIÓN COMPLETA
+print(f"Media ponderada: {weighted_mean:.3f} ± {weighted_mean_err:.3f}")
+print(f"Desviación estándar ponderada: {weighted_std:.3f}")
+print(f"Mínimo: {df_pendientes['Pendiente'].min():.3f}")
+print(f"Máximo: {df_pendientes['Pendiente'].max():.3f}")
+print(f"Rango: {df_pendientes['Pendiente'].max() - df_pendientes['Pendiente'].min():.3f}")
+
+# Media no ponderada para comparación
+simple_mean = df_pendientes['Pendiente'].mean()
+simple_std = df_pendientes['Pendiente'].std()
+print(f"\nMedia simple (sin ponderar): {simple_mean:.3e} ± {simple_std/np.sqrt(len(df_pendientes)):.3e}")
+print(f"Diferencia relativa: {abs(weighted_mean - simple_mean)/simple_mean*100:.2f}%")
+
+
+
+#%%
+Bien como interpreto que es la media ponderada? y la media simple?
+2. ESTADÍSTICAS DESCRIPTIVAS CON INCERTEZAS
+----------------------------------------
+ESTADÍSTICAS GENERALES CON INCERTEZAS:
+========================================
+Media ponderada: 8.849 ± 0.009
+Desviación estándar ponderada: 0.584
+Mínimo: 8.110
+Máximo: 11.647
+Rango: 3.537
+
+Media simple (sin ponderar): 8.854e+00 ± 7.491e-02
+Diferencia relativa: 0.05%
+
+Con esa diferencia conviene tener en cuenta alguna de las 2 en los calculos y plost que siguen?
+#%% 3. MATRIZ DE CORRELACIÓN COMPLETA
 print("\n\n3. MATRIZ DE CORRELACIÓN")
 print("-"*40)
 
@@ -342,7 +402,7 @@ corr_freq_spearman, p_freq_spearman = spearmanr(df_pendientes['Pendiente'], df_p
 
 print("Pendiente vs Frecuencia:")
 print(f"  Pearson: r = {corr_freq_pearson:.3f}, p = {p_freq_pearson:.3e}")
-print(f"  Spearman: ρ = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}")
+print(f"  Spearman: rho = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}")
 
 # Correlación Pendiente vs H0
 corr_h0_pearson, p_h0_pearson = pearsonr(df_pendientes['Pendiente'], df_pendientes['H0_kA_m'])
@@ -350,7 +410,7 @@ corr_h0_spearman, p_h0_spearman = spearmanr(df_pendientes['Pendiente'], df_pendi
 
 print("\nPendiente vs Campo H0:")
 print(f"  Pearson: r = {corr_h0_pearson:.3f}, p = {p_h0_pearson:.3e}")
-print(f"  Spearman: ρ = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}")
+print(f"  Spearman: rho = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}")
 
 # Interpretación de significancia
 def interpretar_significancia(p_valor):
@@ -503,9 +563,9 @@ with open('resumen_analisis_pendientes.txt', 'w') as f:
     
     f.write("CORRELACIONES:\n")
     f.write(f"Pendiente vs Frecuencia (Pearson): r = {corr_freq_pearson:.3f}, p = {p_freq_pearson:.3e}\n")
-    f.write(f"Pendiente vs Frecuencia (Spearman): ρ = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}\n")
+    f.write(f"Pendiente vs Frecuencia (Spearman): rho = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}\n")
     f.write(f"Pendiente vs H0 (Pearson): r = {corr_h0_pearson:.3f}, p = {p_h0_pearson:.3e}\n")
-    f.write(f"Pendiente vs H0 (Spearman): ρ = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}\n\n")
+    f.write(f"Pendiente vs H0 (Spearman): rho = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}\n\n")
     
     f.write("REGRESIÓN MÚLTIPLE:\n")
     f.write(f"R² = {modelo.rsquared:.3f}\n")
@@ -602,7 +662,7 @@ corr_freq_spearman, p_freq_spearman = spearmanr(df_amplitudes['Amplitud_mV'], df
 
 print("Amplitud vs Frecuencia:")
 print(f"  Pearson: r = {corr_freq_pearson:.3f}, p = {p_freq_pearson:.3e}")
-print(f"  Spearman: ρ = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}")
+print(f"  Spearman: rho = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}")
 
 # Correlación Amplitud vs H0
 corr_h0_pearson, p_h0_pearson = pearsonr(df_amplitudes['Amplitud_mV'], df_amplitudes['H0_kA_m'])
@@ -610,7 +670,7 @@ corr_h0_spearman, p_h0_spearman = spearmanr(df_amplitudes['Amplitud_mV'], df_amp
 
 print("\nAmplitud vs Campo H0:")
 print(f"  Pearson: r = {corr_h0_pearson:.3f}, p = {p_h0_pearson:.3e}")
-print(f"  Spearman: ρ = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}")
+print(f"  Spearman: rho = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}")
 
 # Interpretación de significancia
 def interpretar_significancia(p_valor):
@@ -788,9 +848,9 @@ with open('resumen_analisis_amplitudes.txt', 'w') as f:
     
     f.write("CORRELACIONES:\n")
     f.write(f"Amplitud vs Frecuencia (Pearson): r = {corr_freq_pearson:.3f}, p = {p_freq_pearson:.3e}\n")
-    f.write(f"Amplitud vs Frecuencia (Spearman): ρ = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}\n")
+    f.write(f"Amplitud vs Frecuencia (Spearman): rho = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}\n")
     f.write(f"Amplitud vs H0 (Pearson): r = {corr_h0_pearson:.3f}, p = {p_h0_pearson:.3e}\n")
-    f.write(f"Amplitud vs H0 (Spearman): ρ = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}\n\n")
+    f.write(f"Amplitud vs H0 (Spearman): rho = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}\n\n")
     
     f.write("REGRESIÓN MÚLTIPLE:\n")
     f.write(f"R² = {modelo.rsquared:.3f}\n")
