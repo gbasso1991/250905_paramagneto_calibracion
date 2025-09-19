@@ -8,6 +8,7 @@ from astropy.table import Table, Column, MaskedColumn
 from uncertainties import ufloat,unumpy
 from glob import glob
 import seaborn as sns
+from scipy.stats import shapiro
 #%% Pendientes 
 pend_300=glob('300_15_to_5/**/pendientes.txt',recursive=True)
 pend_300.sort(reverse=True)
@@ -363,138 +364,243 @@ print(f"Diferencia relativa: {abs(weighted_mean - simple_mean)/simple_mean*100:.
 
 
 #%%
-Bien como interpreto que es la media ponderada? y la media simple?
-2. ESTADÍSTICAS DESCRIPTIVAS CON INCERTEZAS
-----------------------------------------
-ESTADÍSTICAS GENERALES CON INCERTEZAS:
-========================================
-Media ponderada: 8.849 ± 0.009
-Desviación estándar ponderada: 0.584
-Mínimo: 8.110
-Máximo: 11.647
-Rango: 3.537
+# Bien como interpreto que es la media ponderada? y la media simple?
+# 2. ESTADÍSTICAS DESCRIPTIVAS CON INCERTEZAS
+# ----------------------------------------
+# ESTADÍSTICAS GENERALES CON INCERTEZAS:
+# ========================================
+# Media ponderada: 8.849 ± 0.009
+# Desviación estándar ponderada: 0.584
+# Mínimo: 8.110
+# Máximo: 11.647
+# Rango: 3.537
 
-Media simple (sin ponderar): 8.854e+00 ± 7.491e-02
-Diferencia relativa: 0.05%
+# Media simple (sin ponderar): 8.854e+00 ± 7.491e-02
+# Diferencia relativa: 0.05%
 
-Con esa diferencia conviene tener en cuenta alguna de las 2 en los calculos y plost que siguen?
-#%% 3. MATRIZ DE CORRELACIÓN COMPLETA
-print("\n\n3. MATRIZ DE CORRELACIÓN")
+# Con esa diferencia conviene tener en cuenta alguna de las 2 en los calculos y plost que siguen?
+#%% 3. MATRIZ DE CORRELACIÓN CON INCERTEZAS
+print("\n\n3. MATRIZ DE CORRELACIÓN CON INCERTEZAS")
 print("-"*40)
 
-# Matriz de correlación con todos los métodos
+from scipy.optimize import curve_fit
+import numpy as np
+
+# Función para correlación ponderada por incertezas
+def weighted_correlation(x, y, y_err):
+    """Calcula correlación considerando incertezas en y"""
+    # Ajuste lineal ponderado
+    def linear_func(x, a, b):
+        return a * x + b
+    
+    # Ponderación por inverso de la varianza
+    weights = 1.0 / (y_err**2)
+    
+    try:
+        popt, pcov = curve_fit(linear_func, x, y, sigma=y_err, absolute_sigma=True)
+        a, b = popt
+        # Coeficiente de correlación a partir de la pendiente
+        r = a * np.std(x) / np.std(y)
+        return r, pcov[0, 0]  # Retorna correlación y varianza de la pendiente
+    except:
+        return np.nan, np.nan
+
+# Función para bootstrap con incertezas
+def bootstrap_correlation_with_errors(x, y, y_err, n_bootstrap=1000):
+    """Calcula correlación con bootstrap considerando incertezas"""
+    corr_samples = []
+    n = len(x)
+    
+    for _ in range(n_bootstrap):
+        # Muestrear considerando incertezas en y
+        y_sample = np.random.normal(y, y_err)
+        # Calcular correlación
+        corr, _ = pearsonr(x, y_sample)
+        corr_samples.append(corr)
+    
+    corr_mean = np.mean(corr_samples)
+    corr_std = np.std(corr_samples)
+    return corr_mean, corr_std
+
+# Calcular correlaciones ponderadas
+print("CORRELACIONES PONDERADAS POR INCERTEZAS:")
+print("="*40)
+
+# Correlación Pendiente vs Frecuencia (considerando incertezas)
+r_freq_weighted, r_freq_var = weighted_correlation(
+    df_pendientes['Frecuencia_kHz'], 
+    df_pendientes['Pendiente'],
+    df_pendientes['Pendiente_err'])
+
+r_freq_bootstrap, r_freq_err = bootstrap_correlation_with_errors(
+    df_pendientes['Frecuencia_kHz'],
+    df_pendientes['Pendiente'],
+    df_pendientes['Pendiente_err'],
+    n_bootstrap=1000)
+
+# Correlación Pendiente vs H0 (considerando incertezas)
+r_h0_weighted, r_h0_var = weighted_correlation(
+    df_pendientes['H0_kA_m'], 
+    df_pendientes['Pendiente'],
+    df_pendientes['Pendiente_err'])
+
+r_h0_bootstrap, r_h0_err = bootstrap_correlation_with_errors(
+    df_pendientes['H0_kA_m'],
+    df_pendientes['Pendiente'],
+    df_pendientes['Pendiente_err'],
+    n_bootstrap=1000)
+
+print("MÉTODO DE AJUSTE PONDERADO:")
+print(f"Pendiente vs Frecuencia: r = {r_freq_weighted:.3f} ± {np.sqrt(r_freq_var):.3f}")
+print(f"Pendiente vs H0: r = {r_h0_weighted:.3f} ± {np.sqrt(r_h0_var):.3f}")
+
+print("\nMÉTODO BOOTSTRAP:")
+print(f"Pendiente vs Frecuencia: r = {r_freq_bootstrap:.3f} ± {r_freq_err:.3f}")
+print(f"Pendiente vs H0: r = {r_h0_bootstrap:.3f} ± {r_h0_err:.3f}")
+
+# Correlaciones simples para comparación
+print("\nCORRELACIONES SIMPLES (sin considerar incertezas):")
 corr_matrix_pearson = df_pendientes[['Pendiente', 'Frecuencia_kHz', 'H0_kA_m']].corr(method='pearson')
-corr_matrix_spearman = df_pendientes[['Pendiente', 'Frecuencia_kHz', 'H0_kA_m']].corr(method='spearman')
-
 print("Matriz de correlación de Pearson:")
-print(corr_matrix_pearson)
+print(corr_matrix_pearson.round(3))
 
-print("\nMatriz de correlación de Spearman (no paramétrica):")
-print(corr_matrix_spearman)
 
-#% 4. CORRELACIONES INDIVIDUALES CON SIGNIFICANCIA
-print("\n\n4. CORRELACIONES INDIVIDUALES")
+#%% 4. REGRESIÓN PONDERADA POR INCERTEZAS
+print("\n\n4. REGRESIÓN LINEAL PONDERADA")
 print("-"*40)
 
-# Correlación Pendiente vs Frecuencia
-corr_freq_pearson, p_freq_pearson = pearsonr(df_pendientes['Pendiente'], df_pendientes['Frecuencia_kHz'])
-corr_freq_spearman, p_freq_spearman = spearmanr(df_pendientes['Pendiente'], df_pendientes['Frecuencia_kHz'])
+# Regresión ponderada por incertezas
+def weighted_linear_regression(x, y, y_err):
+    """Regresión lineal ponderada por incertezas"""
+    X = sm.add_constant(x)
+    weights = 1.0 / (y_err**2)
+    
+    model = sm.WLS(y, X, weights=weights)
+    results = model.fit()
+    return results
 
-print("Pendiente vs Frecuencia:")
-print(f"  Pearson: r = {corr_freq_pearson:.3f}, p = {p_freq_pearson:.3e}")
-print(f"  Spearman: rho = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}")
+# Regresión Pendiente vs Frecuencia (ponderada)
+print("REGRESIÓN PONDERADA - Pendiente vs Frecuencia:")
+model_freq_weighted = weighted_linear_regression(
+    df_pendientes['Frecuencia_kHz'],
+    df_pendientes['Pendiente'],
+    df_pendientes['Pendiente_err']
+)
+print(model_freq_weighted.summary())
 
-# Correlación Pendiente vs H0
-corr_h0_pearson, p_h0_pearson = pearsonr(df_pendientes['Pendiente'], df_pendientes['H0_kA_m'])
-corr_h0_spearman, p_h0_spearman = spearmanr(df_pendientes['Pendiente'], df_pendientes['H0_kA_m'])
+# Regresión Pendiente vs H0 (ponderada)
+print("\nREGRESIÓN PONDERADA - Pendiente vs H0:")
+model_h0_weighted = weighted_linear_regression(
+    df_pendientes['H0_kA_m'],
+    df_pendientes['Pendiente'],
+    df_pendientes['Pendiente_err']
+)
+print(model_h0_weighted.summary())
 
-print("\nPendiente vs Campo H0:")
-print(f"  Pearson: r = {corr_h0_pearson:.3f}, p = {p_h0_pearson:.3e}")
-print(f"  Spearman: rho = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}")
-
-# Interpretación de significancia
-def interpretar_significancia(p_valor):
-    if p_valor < 0.001:
-        return "*** Muy significativa"
-    elif p_valor < 0.01:
-        return "** Muy significativa"
-    elif p_valor < 0.05:
-        return "* Significativa"
-    else:
-        return "No significativa"
-
-print(f"\nInterpretación Pearson Frecuencia: {interpretar_significancia(p_freq_pearson)}")
-print(f"Interpretación Spearman Frecuencia: {interpretar_significancia(p_freq_spearman)}")
-print(f"Interpretación Pearson H0: {interpretar_significancia(p_h0_pearson)}")
-print(f"Interpretación Spearman H0: {interpretar_significancia(p_h0_spearman)}")
-
-#% 5. ANÁLISIS DE REGRESIÓN MÚLTIPLE
-print("\n\n5. REGRESIÓN MÚLTIPLE")
+#%% 5. REGRESIÓN MÚLTIPLE PONDERADA
+print("\n\n5. REGRESIÓN MÚLTIPLE PONDERADA")
 print("-"*40)
 
-# Preparar variables para regresión
+# Preparar variables para regresión múltiple ponderada
 X = df_pendientes[['Frecuencia_kHz', 'H0_kA_m']]
-X = sm.add_constant(X)  # Agregar intercepto
+X = sm.add_constant(X)
 y = df_pendientes['Pendiente']
+weights = 1.0 / (df_pendientes['Pendiente_err']**2)
 
-# Modelo de regresión lineal múltiple
-modelo = sm.OLS(y, X).fit()
+# Modelo de regresión lineal múltiple ponderada
+modelo_weighted = sm.WLS(y, X, weights=weights).fit()
 
-print("RESUMEN DEL MODELO DE REGRESIÓN:")
+print("RESUMEN DEL MODELO DE REGRESIÓN PONDERADA:")
 print("="*50)
-print(modelo.summary())
+print(modelo_weighted.summary())
 
-# Coeficientes estandarizados para comparar importancia
-print("\nCOEFICIENTES ESTANDARIZADOS (importancia relativa):")
-coef_std = modelo.params[1:] / y.std()  # Estandarizar coeficientes
-print(f"Frecuencia: {coef_std['Frecuencia_kHz']:.3f}")
-print(f"Campo H0: {coef_std['H0_kA_m']:.3f}")
+# Comparar con modelo no ponderado
+modelo_simple = sm.OLS(y, X).fit()
+print(f"\nCOMPARACIÓN DE MODELOS:")
+print(f"R² ponderado: {modelo_weighted.rsquared:.3f}")
+print(f"R² simple: {modelo_simple.rsquared:.3f}")
+print(f"Diferencia: {modelo_weighted.rsquared - modelo_simple.rsquared:.3f}")
 
-#% 6. ANÁLISIS DE INTERACCIÓN ENTRE VARIABLES
-print("\n\n6. ANÁLISIS DE INTERACCIÓN")
+#%% 6. ANÁLISIS DE RESIDUOS PONDERADOS
+print("\n\n6. ANÁLISIS DE RESIDUOS PONDERADOS")
 print("-"*40)
 
-# Modelo con término de interacción
-X_interaction = df_pendientes[['Frecuencia_kHz', 'H0_kA_m']].copy()
-X_interaction['Interaccion'] = X_interaction['Frecuencia_kHz'] * X_interaction['H0_kA_m']
-X_interaction = sm.add_constant(X_interaction)
+# Calcular residuos ponderados
+residuals_weighted = modelo_weighted.resid
+residuals_standardized = residuals_weighted / df_pendientes['Pendiente_err']
 
-modelo_interaction = sm.OLS(y, X_interaction).fit()
+print("ESTADÍSTICAS DE RESIDUOS PONDERADOS:")
+print(f"Media de residuos: {np.mean(residuals_weighted):.3e}")
+print(f"Desviación estándar de residuos: {np.std(residuals_weighted):.3e}")
+print(f"Residuos estandarizados (deberían ser ~N(0,1)):")
+print(f"  Media: {np.mean(residuals_standardized):.3f}")
+print(f"  Desviación: {np.std(residuals_standardized):.3f}")
 
-print("MODELO CON INTERACCIÓN:")
+# Test de normalidad de residuos
+_, p_residuals = shapiro(residuals_standardized)
+print(f"Normalidad de residuos (Shapiro-Wilk): p = {p_residuals:.3e}")
+print(f"Interpretación: {'Normal' if p_residuals > 0.05 else 'No normal'}")
+
+#%% 7. COMPARACIÓN FINAL DE CORRELACIONES
+print("\n\n7. COMPARACIÓN FINAL - CON Y SIN INCERTEZAS")
+print("-"*40)
+
+# Obtener correlaciones simples para comparación
+corr_freq_simple, p_freq_simple = pearsonr(df_pendientes['Frecuencia_kHz'], df_pendientes['Pendiente'])
+corr_h0_simple, p_h0_simple = pearsonr(df_pendientes['H0_kA_m'], df_pendientes['Pendiente'])
+
+print("COMPARACIÓN DE CORRELACIONES:")
 print("="*30)
-print(f"Coeficiente de interacción: {modelo_interaction.params['Interaccion']:.3e}")
-print(f"p-valor interacción: {modelo_interaction.pvalues['Interaccion']:.3e}")
-print(f"Significancia: {interpretar_significancia(modelo_interaction.pvalues['Interaccion'])}")
+print("PENDIENTE vs FRECUENCIA:")
+print(f"  Simple:     r = {corr_freq_simple:.3f}, p = {p_freq_simple:.3e}")
+print(f"  Ponderada:  r = {r_freq_bootstrap:.3f} ± {r_freq_err:.3f}")
+print(f"  Diferencia: {abs(corr_freq_simple - r_freq_bootstrap):.3f}")
 
-# Comparar modelos (con y sin interacción)
-print(f"\nComparación de modelos (R²):")
-print(f"Sin interacción: {modelo.rsquared:.3f}")
-print(f"Con interacción: {modelo_interaction.rsquared:.3f}")
-print(f"Mejora: {modelo_interaction.rsquared - modelo.rsquared:.3f}")
+print("\nPENDIENTE vs H0:")
+print(f"  Simple:     r = {corr_h0_simple:.3f}, p = {p_h0_simple:.3e}")
+print(f"  Ponderada:  r = {r_h0_bootstrap:.3f} ± {r_h0_err:.3f}")
+print(f"  Diferencia: {abs(corr_h0_simple - r_h0_bootstrap):.3f}")
 
-#% 7. ANÁLISIS DE GRADIENTES ESPACIALES
-print("\n\n7. ANÁLISIS DE GRADIENTES ESPACIALES")
+# Interpretación de cambios
+print(f"\nINTERPRETACIÓN:")
+if abs(corr_freq_simple - r_freq_bootstrap) < 0.05:
+    print("✓ Las incertezas no afectan significativamente la correlación con Frecuencia")
+else:
+    print("⚠️ Las incertezas afectan la correlación con Frecuencia")
+
+if abs(corr_h0_simple - r_h0_bootstrap) < 0.05:
+    print("✓ Las incertezas no afectan significativamente la correlación con H0")
+else:
+    print("⚠️ Las incertezas afectan la correlación con H0")
+
+#%% 8. VISUALIZACIÓN DE CORRELACIONES PONDERADAS
+print("\n\n8. GRÁFICO DE CORRELACIONES PONDERADAS")
 print("-"*40)
 
-def analizar_gradientes(matriz, nombre):
-    """Analiza gradientes en ambas dimensiones"""
-    grad_x = np.gradient(matriz, axis=1)  # Dirección H0 (horizontal)
-    grad_y = np.gradient(matriz, axis=0)  # Dirección Frecuencia (vertical)
-    
-    print(f"\nGRADIENTES - {nombre}:")
-    print(f"Dirección H0 (horizontal):")
-    print(f"  Media: {np.mean(grad_x):.3e} ± {np.std(grad_x):.3e}")
-    print(f"  Mínimo: {np.min(grad_x):.3e}, Máximo: {np.max(grad_x):.3e}")
-    
-    print(f"Dirección Frecuencia (vertical):")
-    print(f"  Media: {np.mean(grad_y):.3e} ± {np.std(grad_y):.3e}")
-    print(f"  Mínimo: {np.min(grad_y):.3e}, Máximo: {np.max(grad_y):.3e}")
-    
-    return grad_x, grad_y
+plt.figure(figsize=(12, 5))
 
-grad_x_m, grad_y_m = analizar_gradientes(m_nominal, "Pendientes")
+# Correlación con Frecuencia
+plt.subplot(1, 2, 1)
+plt.errorbar(df_pendientes['Frecuencia_kHz'], df_pendientes['Pendiente'],
+             yerr=df_pendientes['Pendiente_err'], fmt='o', alpha=0.6,
+             capsize=3, label='Datos con incertezas')
+plt.xlabel('Frecuencia (kHz)')
+plt.ylabel('Pendiente')
+plt.title(f'Pendiente vs Frecuencia\nr = {r_freq_bootstrap:.3f} ± {r_freq_err:.3f}')
+plt.grid(True, alpha=0.3)
 
+# Correlación con H0
+plt.subplot(1, 2, 2)
+plt.errorbar(df_pendientes['H0_kA_m'], df_pendientes['Pendiente'],
+             yerr=df_pendientes['Pendiente_err'], fmt='o', alpha=0.6,
+             capsize=3, label='Datos con incertezas')
+plt.xlabel('Campo H0 (kA/m)')
+plt.ylabel('Pendiente')
+plt.title(f'Pendiente vs H0\nr = {r_h0_bootstrap:.3f} ± {r_h0_err:.3f}')
+plt.grid(True, alpha=0.3)
+
+plt.tight_layout()
+plt.show()
 #% 8. VISUALIZACIÓN DE CORRELACIONES
 print("\n\n8. VISUALIZACIÓN GRÁFICA")
 print("-"*40)
@@ -539,18 +645,36 @@ for i in range(len(corr_matrix_pearson.columns)):
 plt.colorbar(im, ax=axes[1, 0])
 
 # Gráfico de residuos del modelo
-axes[1, 1].scatter(modelo.fittedvalues, modelo.resid, alpha=0.7)
+axes[1, 1].scatter(modelo_weighted.fittedvalues, modelo_weighted.resid, alpha=0.7)
 axes[1, 1].axhline(y=0, color='red', linestyle='--')
 axes[1, 1].set_xlabel('Valores Ajustados')
 axes[1, 1].set_ylabel('Residuos')
-axes[1, 1].set_title('Análisis de Residuos del Modelo')
+axes[1, 1].set_title('Análisis de Residuos del Modelo Ponderado')
 axes[1, 1].grid(True, alpha=0.3)
 plt.savefig('analisis_correlaciones_pendientes.png', dpi=300)
 plt.show()
 
-#% 9. EXPORTACIÓN DE RESULTADOS
+#%% 9. EXPORTACIÓN DE RESULTADOS
 print("\n\n9. EXPORTACIÓN DE RESULTADOS")
 print("-"*40)
+
+# Primero calcular las correlaciones simples si no están definidas
+if 'corr_freq_pearson' not in locals():
+    corr_freq_pearson, p_freq_pearson = pearsonr(df_pendientes['Frecuencia_kHz'], df_pendientes['Pendiente'])
+    corr_freq_spearman, p_freq_spearman = spearmanr(df_pendientes['Frecuencia_kHz'], df_pendientes['Pendiente'])
+    corr_h0_pearson, p_h0_pearson = pearsonr(df_pendientes['H0_kA_m'], df_pendientes['Pendiente'])
+    corr_h0_spearman, p_h0_spearman = spearmanr(df_pendientes['H0_kA_m'], df_pendientes['Pendiente'])
+
+# Asegurarse de que el modelo simple está definido
+if 'modelo_simple' not in locals():
+    X_simple = df_pendientes[['Frecuencia_kHz', 'H0_kA_m']]
+    X_simple = sm.add_constant(X_simple)
+    y_simple = df_pendientes['Pendiente']
+    modelo_simple = sm.OLS(y_simple, X_simple).fit()
+
+# Calcular coeficientes estandarizados si no están definidos
+if 'coef_std' not in locals():
+    coef_std = modelo_simple.params[1:] / df_pendientes['Pendiente'].std()
 
 # Guardar datos
 df_pendientes.to_csv('analisis_pendientes_completo.csv', index=False)
@@ -561,27 +685,38 @@ with open('resumen_analisis_pendientes.txt', 'w') as f:
     f.write("RESUMEN DE ANÁLISIS ESTADÍSTICO - PENDIENTES\n")
     f.write("="*60 + "\n\n")
     
-    f.write("CORRELACIONES:\n")
+    f.write("CORRELACIONES SIMPLES:\n")
     f.write(f"Pendiente vs Frecuencia (Pearson): r = {corr_freq_pearson:.3f}, p = {p_freq_pearson:.3e}\n")
     f.write(f"Pendiente vs Frecuencia (Spearman): rho = {corr_freq_spearman:.3f}, p = {p_freq_spearman:.3e}\n")
     f.write(f"Pendiente vs H0 (Pearson): r = {corr_h0_pearson:.3f}, p = {p_h0_pearson:.3e}\n")
     f.write(f"Pendiente vs H0 (Spearman): rho = {corr_h0_spearman:.3f}, p = {p_h0_spearman:.3e}\n\n")
     
-    f.write("REGRESIÓN MÚLTIPLE:\n")
-    f.write(f"R² = {modelo.rsquared:.3f}\n")
-    f.write(f"R² ajustado = {modelo.rsquared_adj:.3f}\n")
-    f.write(f"Intercepto = {modelo.params['const']:.3e}\n")
-    f.write(f"Coef. Frecuencia = {modelo.params['Frecuencia_kHz']:.3e}\n")
-    f.write(f"Coef. H0 = {modelo.params['H0_kA_m']:.3e}\n\n")
+    f.write("CORRELACIONES PONDERADAS (Bootstrap):\n")
+    f.write(f"Pendiente vs Frecuencia: r = {r_freq_bootstrap:.3f} ± {r_freq_err:.3f}\n")
+    f.write(f"Pendiente vs H0: r = {r_h0_bootstrap:.3f} ± {r_h0_err:.3f}\n\n")
     
-    f.write("GRADIENTES ESPACIALES:\n")
-    f.write(f"Gradiente H0: {np.mean(grad_x_m):.3e} ± {np.std(grad_x_m):.3e}\n")
-    f.write(f"Gradiente Frecuencia: {np.mean(grad_y_m):.3e} ± {np.std(grad_y_m):.3e}\n")
+    f.write("REGRESIÓN MÚLTIPLE SIMPLE:\n")
+    f.write(f"R² = {modelo_simple.rsquared:.3f}\n")
+    f.write(f"R² ajustado = {modelo_simple.rsquared_adj:.3f}\n")
+    f.write(f"Intercepto = {modelo_simple.params['const']:.3e}\n")
+    f.write(f"Coef. Frecuencia = {modelo_simple.params['Frecuencia_kHz']:.3e}\n")
+    f.write(f"Coef. H0 = {modelo_simple.params['H0_kA_m']:.3e}\n\n")
+    
+    f.write("REGRESIÓN MÚLTIPLE PONDERADA:\n")
+    f.write(f"R² = {modelo_weighted.rsquared:.3f}\n")
+    f.write(f"R² ajustado = {modelo_weighted.rsquared_adj:.3f}\n")
+    f.write(f"Intercepto = {modelo_weighted.params['const']:.3e}\n")
+    f.write(f"Coef. Frecuencia = {modelo_weighted.params['Frecuencia_kHz']:.3e}\n")
+    f.write(f"Coef. H0 = {modelo_weighted.params['H0_kA_m']:.3e}\n\n")
+    
+    f.write("ESTADÍSTICAS DESCRIPTIVAS:\n")
+    f.write(f"Media ponderada: {weighted_mean:.3f} ± {weighted_mean_err:.3f}\n")
+    f.write(f"Media simple: {simple_mean:.3f} ± {simple_std/np.sqrt(len(df_pendientes)):.3f}\n")
+    f.write(f"Diferencia relativa: {abs(weighted_mean - simple_mean)/simple_mean*100:.2f}%\n")
 
 print("Resumen estadístico guardado en 'resumen_analisis_pendientes.txt'")
-print("\n¡Análisis de pendientes completado exitosamente! ✅")
 
-#% 10. INTERPRETACIÓN FINAL
+#%% 10. INTERPRETACIÓN FINAL
 print("\n\n10. INTERPRETACIÓN FINAL")
 print("-"*40)
 print("RESUMEN EJECUTIVO:")
@@ -589,8 +724,14 @@ print(f"• La pendiente muestra una correlación {'positiva' if corr_freq_pears
 print(f"  con la frecuencia (r = {corr_freq_pearson:.3f})")
 print(f"• La pendiente muestra una correlación {'positiva' if corr_h0_pearson > 0 else 'negativa'} ")
 print(f"  con el campo H0 (r = {corr_h0_pearson:.3f})")
-print(f"• El modelo de regresión explica el {modelo.rsquared*100:.1f}% de la variabilidad")
+print(f"• El modelo de regresión explica el {modelo_simple.rsquared*100:.1f}% de la variabilidad")
 print(f"• La variable más influyente es: {'Frecuencia' if abs(coef_std['Frecuencia_kHz']) > abs(coef_std['H0_kA_m']) else 'Campo H0'}")
+
+# Añadir interpretación de las correlaciones ponderadas
+print(f"\nCONSIDERANDO INCERTEZAS:")
+print(f"• Correlación ponderada Frecuencia: r = {r_freq_bootstrap:.3f} ± {r_freq_err:.3f}")
+print(f"• Correlación ponderada H0: r = {r_h0_bootstrap:.3f} ± {r_h0_err:.3f}")
+
 #%% ANÁLISIS ESTADÍSTICO DE CORRELACIONES - AMPLITUD DE SEÑAL
 # =============================================================================
 # ANÁLISIS ESTADÍSTICO DE CORRELACIONES - AMPLITUD DE SEÑAL
